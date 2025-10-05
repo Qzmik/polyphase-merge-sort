@@ -15,6 +15,7 @@ public class Record {
     private Double current;
     public static final int MIN_RANGE = 1;
     public static final int MAX_RANGE = 100;
+    public static final int RECORD_SIZE_ON_DISK = 16;
 
     public Record() {
         Pair<Double, Double> randomRecordValues = generateRandomRecordValues();

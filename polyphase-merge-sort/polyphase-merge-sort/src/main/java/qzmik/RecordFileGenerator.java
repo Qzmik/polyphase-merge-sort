@@ -3,9 +3,8 @@ package qzmik;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 
 import org.javatuples.Pair;
 
@@ -13,40 +12,34 @@ import org.javatuples.Pair;
 @Setter
 public class RecordFileGenerator {
 
-    public static void generateRecordFile(int amountOfRecordsToGenerate) {
-        BufferedWriter writer = createRecordFile(amountOfRecordsToGenerate);
-        populateRecordFile(amountOfRecordsToGenerate, writer);
-        closeRecordFile(writer);
+    public static void generateRecordFile(int amountOfRecordsToGenerate) throws IOException {
+        RandomAccessFile fileHook = createRecordFile(amountOfRecordsToGenerate);
+        populateRecordFile(amountOfRecordsToGenerate, fileHook);
+        closeRecordFile(fileHook);
     }
 
-    private static BufferedWriter createRecordFile(int amountOfRecordsToGenerate) {
+    private static RandomAccessFile createRecordFile(int amountOfRecordsToGenerate) {
         try {
-            return new BufferedWriter(
-                    new FileWriter(String.format("../output/records%1$d", amountOfRecordsToGenerate)));
-        } catch (IOException e) {
+            return new RandomAccessFile(
+                    String.format("../output/records%1$d", amountOfRecordsToGenerate), "rw");
+        } catch (Exception e) {
             throw new Error(e.getMessage());
         }
     }
 
-    private static void populateRecordFile(int amountOfRecordsToGenerate, BufferedWriter writer) {
-        try {
-            for (int i = 0; i < amountOfRecordsToGenerate; i++) {
-                Pair<Double, Double> randomRecordValues = Record.generateRandomRecordValues();
-                writer.write(
-                        String.format("%1$f %2$f\n", randomRecordValues.getValue0(), randomRecordValues.getValue1()));
-            }
-        } catch (IOException e) {
-            closeRecordFile(writer);
-            throw new Error(e.getMessage());
+    private static void populateRecordFile(int amountOfRecordsToGenerate, RandomAccessFile fileHook)
+            throws IOException {
+        for (int i = 0; i < amountOfRecordsToGenerate; i++) {
+            Pair<Double, Double> randomRecordValues = Record.generateRandomRecordValues();
+            fileHook.writeDouble(randomRecordValues.getValue0());
+            fileHook.writeDouble(randomRecordValues.getValue1());
         }
+
+        closeRecordFile(fileHook);
     }
 
-    private static void closeRecordFile(BufferedWriter writer) {
-        try {
-            writer.close();
-        } catch (IOException e) {
-            throw new Error(e.getMessage());
-        }
+    private static void closeRecordFile(RandomAccessFile fileHook) throws IOException {
+        fileHook.close();
     }
 
 }
