@@ -2,6 +2,8 @@ package qzmik;
 
 import java.util.Random;
 
+import org.javatuples.Pair;
+
 import lombok.Getter;
 import lombok.Setter;
 
@@ -15,9 +17,15 @@ public class Record {
     public static final int MAX_RANGE = 100;
 
     public Record() {
+        Pair<Double, Double> randomRecordValues = generateRandomRecordValues();
+        voltage = randomRecordValues.getValue0();
+        current = randomRecordValues.getValue1();
+    }
+
+    public static Pair<Double, Double> generateRandomRecordValues() {
         Random r = new Random();
-        voltage = r.nextDouble() * (MAX_RANGE - MIN_RANGE) + MIN_RANGE;
-        current = r.nextDouble() * (MAX_RANGE - MIN_RANGE) + MIN_RANGE;
+        return new Pair<Double, Double>(r.nextDouble() * (MAX_RANGE - MIN_RANGE) + MIN_RANGE,
+                r.nextDouble() * (MAX_RANGE - MIN_RANGE) + MIN_RANGE);
     }
 
     public Record(double voltageToSet, double currentToSet) {
