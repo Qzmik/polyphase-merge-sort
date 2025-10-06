@@ -1,6 +1,7 @@
 package qzmik;
 
 import java.io.EOFException;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
@@ -16,6 +17,11 @@ public class Tape {
         fileHook = new RandomAccessFile(String.format("../output/tape%1$d", tapeID), "rw");
     }
 
+    // initial record file can be used as a tape after initial distribution
+    public Tape(int tapeID, String initialRecordFileName) throws FileNotFoundException {
+        fileHook = new RandomAccessFile(initialRecordFileName, "rw");
+    }
+
     public Pair<Double, Double> readRecord() throws IOException, EOFException {
         Pair<Double, Double> recordData = new Pair<Double, Double>(fileHook.readDouble(), fileHook.readDouble());
         return recordData;
@@ -26,10 +32,12 @@ public class Tape {
         fileHook.writeDouble(record.getCurrent());
     }
 
-    public byte[] readBlockOfRecords(int numberOfRecordsToRead) throws IOException, EOFException {
-        byte[] buffer = new byte[numberOfRecordsToRead * Record.RECORD_SIZE_ON_DISK];
-        fileHook.read(buffer);
-        return buffer;
+    public void writeRecordInReadableFormat(Record record) throws IOException {
+        fileHook.writeChars(String.format("%1$.7f %2$.7f\n", record.getVoltage(), record.getCurrent()));
+    }
+
+    public int readBlockOfRecordsToBuffer(byte[] buffer) throws IOException {
+        return fileHook.read(buffer);
     }
 
     public void writeBlockOfRecords(byte[] blockOfRecords) throws IOException {
