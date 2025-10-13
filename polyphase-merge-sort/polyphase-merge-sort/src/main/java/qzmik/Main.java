@@ -4,8 +4,10 @@ import java.io.IOException;
 
 public class Main {
     public static void main(String[] args) throws IOException, InterruptedException {
-        RecordFileGenerator.generateRecordFile(Integer.parseInt(args[0]));
-        TapeManager tapeManager = new TapeManager("../output/records100");
-        tapeManager.saveSortingTapeStateToDisplayTape(2);
+        TapeManager tapeManager = new TapeManager(String.format("../output/records%1$s", args[0]),
+                Integer.parseInt(args[0]));
+        Sorter sorter = new Sorter(tapeManager);
+        sorter.getAndDistributeRecordsFromInputTape();
+        tapeManager.saveSortingTapeStateToDisplayTape(0);
     }
 }

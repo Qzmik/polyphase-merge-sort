@@ -33,7 +33,8 @@ public class Tape {
     }
 
     public void writeRecordInReadableFormat(Record record) throws IOException {
-        fileHook.writeChars(String.format("%1$.7f %2$.7f\n", record.getVoltage(), record.getCurrent()));
+        fileHook.writeChars(
+                String.format("%1$.7f %2$.7f %3$.7f\n", record.getVoltage(), record.getCurrent(), record.getPower()));
     }
 
     public int readBlockOfRecordsToBuffer(byte[] buffer) throws IOException {
@@ -44,11 +45,24 @@ public class Tape {
         fileHook.write(blockOfRecords);
     }
 
+    public void resetTape() throws IOException {
+        fileHook.seek(0);
+    }
+
+    public void setPosition(long pos) throws IOException {
+        fileHook.seek(pos);
+    }
+
+    public long getPosition() throws IOException {
+        return fileHook.getFilePointer();
+    }
+
     public void clearTape() throws IOException {
         fileHook.setLength(0);
     }
 
     public void closeTape() throws IOException {
+        clearTape();
         fileHook.close();
     }
 
