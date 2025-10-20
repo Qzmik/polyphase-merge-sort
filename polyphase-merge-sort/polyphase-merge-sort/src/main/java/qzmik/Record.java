@@ -37,4 +37,13 @@ public class Record {
     public Double getPower() {
         return voltage * current;
     }
+
+    public int compareTo(Record other) {
+        if (getPower() < other.getPower())
+            return -1;
+        if (getPower() == other.getPower())
+            return 0;
+        else
+            return 1;
+    }
 }
