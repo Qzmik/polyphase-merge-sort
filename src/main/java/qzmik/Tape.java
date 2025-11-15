@@ -49,6 +49,10 @@ public class Tape {
         fileHook.seek(0);
     }
 
+    public long getLength() throws IOException {
+        return fileHook.length();
+    }
+
     public void setPosition(long pos) throws IOException {
         fileHook.seek(pos);
     }

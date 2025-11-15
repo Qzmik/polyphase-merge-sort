@@ -11,7 +11,8 @@ public class TapeManager {
 
     private Tape[] sortingTapes; // tapes used for polyphase merge sort
     private Tape displayTape; // tape that will be used to display the state of one of the sorting tapes
-    private int inputTapeID = 2;
+    public int inputTapeID = 2;
+    private ByteBuffer[] blockBuffers;
 
     public TapeManager(String inputTapeFileName, int recordAmount) throws FileNotFoundException, IOException {
         sortingTapes = new Tape[3];
@@ -19,11 +20,50 @@ public class TapeManager {
         sortingTapes[1] = new Tape(1);
         sortingTapes[2] = new Tape(inputTapeID, inputTapeFileName);
         displayTape = new Tape(3);
+        blockBuffers = new ByteBuffer[3];
+
+        blockBuffers[0] = ByteBuffer.allocate(Record.RECORD_SIZE_ON_DISK * TapeManager.NUMBER_OF_RECORDS_IN_A_BLOCK);
+        blockBuffers[1] = ByteBuffer.allocate(Record.RECORD_SIZE_ON_DISK * TapeManager.NUMBER_OF_RECORDS_IN_A_BLOCK);
+        blockBuffers[2] = ByteBuffer.allocate(Record.RECORD_SIZE_ON_DISK * TapeManager.NUMBER_OF_RECORDS_IN_A_BLOCK);
         clearAllTapes();
         RecordFileGenerator.generateRecordFile(recordAmount);
     }
 
-    public void saveSortingTapeStateToDisplayTape(int tapeID) throws IOException, EOFException {
+    private void readTapeBlockIntoBuffer(int targetTapeIndex) throws IOException, EOFException {
+        byte[] recordArray = new byte[NUMBER_OF_RECORDS_IN_A_BLOCK * Record.RECORD_SIZE_ON_DISK];
+        int numberOfBytesRead = sortingTapes[targetTapeIndex].readBlockOfRecordsToBuffer(recordArray);
+        if (numberOfBytesRead < 0) {
+            sortingTapes[targetTapeIndex].clearTape();
+            throw new EOFException("Chosen tape has no more data on it");
+        }
+        blockBuffers[targetTapeIndex] = ByteBuffer.wrap(recordArray, 0, numberOfBytesRead);
+    }
+
+    private void writeBufferToTape(int targetTapeIndex) throws IOException {
+        sortingTapes[targetTapeIndex].writeBlockOfRecords(blockBuffers[targetTapeIndex].array());
+        blockBuffers[targetTapeIndex] = ByteBuffer
+                .allocate(Record.RECORD_SIZE_ON_DISK * TapeManager.NUMBER_OF_RECORDS_IN_A_BLOCK);
+    }
+
+    public Record readRecord(int targetBufferIndex) throws IOException, EOFException {
+        if (!blockBuffers[targetBufferIndex].hasRemaining()) {
+            readTapeBlockIntoBuffer(targetBufferIndex);
+        }
+
+        return new Record(blockBuffers[targetBufferIndex].getDouble(), blockBuffers[targetBufferIndex].getDouble());
+    }
+
+    public void writeRecord(int targetBufferIndex, Record record) throws IOException {
+        if (!blockBuffers[targetBufferIndex].hasRemaining()) {
+            writeBufferToTape(targetBufferIndex);
+        }
+
+        blockBuffers[targetBufferIndex].putDouble(record.getVoltage());
+        blockBuffers[targetBufferIndex].putDouble(record.getCurrent());
+
+    }
+
+    public void saveSortingTapeStateToArchive(int tapeID, String archiveName) throws IOException, EOFException {
 
         displayTape.clearTape();
         long prevPosition = sortingTapes[tapeID].getPosition();
@@ -45,25 +85,7 @@ public class TapeManager {
 
     }
 
-    public double[] readRecordBlockFromInputTapeInDoubleFormat() throws IOException, EOFException {
-        return readRecordBlockFromTapeInDoubleFormat(inputTapeID);
-    }
-
-    public byte[] readRecordBlockFromInputTapeInBytes() throws IOException, EOFException {
-        return readRecordBlockFromTapeInBytes(inputTapeID);
-    }
-
-    public byte[] readRecordBlockFromTapeInBytes(int tapeID) throws IOException, EOFException {
-        byte[] recordBuffer = new byte[NUMBER_OF_RECORDS_IN_A_BLOCK * Record.RECORD_SIZE_ON_DISK];
-        int numberOfBytesRead = sortingTapes[tapeID].readBlockOfRecordsToBuffer(recordBuffer);
-        if (numberOfBytesRead < 0) {
-            throw new EOFException("Chosen tape has no more data on it");
-        }
-        ByteBuffer byteBuffer = ByteBuffer.wrap(recordBuffer, 0, numberOfBytesRead);
-        return byteBuffer.array();
-    }
-
-    public double[] readRecordBlockFromTapeInDoubleFormat(int tapeID) throws IOException, EOFException {
+    private double[] readRecordBlockFromTapeInDoubleFormat(int tapeID) throws IOException, EOFException {
 
         byte[] recordBuffer = new byte[NUMBER_OF_RECORDS_IN_A_BLOCK * Record.RECORD_SIZE_ON_DISK];
         int numberOfBytesRead = sortingTapes[tapeID].readBlockOfRecordsToBuffer(recordBuffer);
@@ -72,10 +94,6 @@ public class TapeManager {
         }
         double[] tapeStateInDoubleFormat = Converter.convertByteArrayToDoubleArray(recordBuffer, numberOfBytesRead);
         return tapeStateInDoubleFormat;
-    }
-
-    public void writeRecordBlockToTapeInBytes(byte[] recordBlock, int tapeID) throws IOException, EOFException {
-        sortingTapes[tapeID].writeBlockOfRecords(recordBlock);
     }
 
     public void closeAllTapes() throws IOException {
