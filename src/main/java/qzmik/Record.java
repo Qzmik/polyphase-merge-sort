@@ -34,10 +34,6 @@ public class Record {
         current = currentToSet;
     }
 
-    public static Record getZeroRecord() {
-        return new Record(0.0f, 0.0f);
-    }
-
     public Double getPower() {
         return voltage * current;
     }

@@ -95,7 +95,7 @@ public class Sorter {
 
     public void getAndDistributeRecordsFromInputTape() throws IOException, EOFException {
         int targetBuffer = 0;
-        suppressingFib = 1;
+        suppressingFib = 0;
 
         // if program throws exception here, there are no record on input tape
         Record prevRecord = tapeManager.readRecord(tapeManager.inputTapeID);
@@ -104,27 +104,29 @@ public class Sorter {
         Record currRecord = prevRecord;
 
         while (true) {
-
-            if (runCounter[targetBuffer] == fibonacciBuffer[1]) {
-                increaseFibonacciNumber();
-                targetBuffer = targetBuffer == 1 ? 0 : 1;
-                prevRecord = Record.getZeroRecord();
-                continue;
-            }
+            System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], fibonacciBuffer[1]);
 
             try {
                 currRecord = tapeManager.readRecord(tapeManager.inputTapeID);
+                System.out.printf("%f %f %f\n", currRecord.getVoltage(), currRecord.getCurrent(),
+                        currRecord.getPower());
             } catch (EOFException e) {
                 if (fibonacciBuffer[1] - runCounter[targetBuffer] != fibonacciBuffer[0])
                     dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
+                tapeManager.flushBlockBuffersToTapes();
                 System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
                 System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
                 return;
             }
 
             if (currRecord.compareTo(prevRecord) == -1) {
+                if (runCounter[targetBuffer] == fibonacciBuffer[1]) {
+
+                    increaseFibonacciNumber();
+                    targetBuffer = targetBuffer == 1 ? 0 : 1;
+                    System.out.printf("Swapping to targetBuffer :%d\n", targetBuffer);
+                }
                 runCounter[targetBuffer]++;
-                continue;
             }
 
             tapeManager.writeRecord(targetBuffer, currRecord);

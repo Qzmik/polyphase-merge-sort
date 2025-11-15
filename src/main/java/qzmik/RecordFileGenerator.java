@@ -21,7 +21,7 @@ public class RecordFileGenerator {
     private static RandomAccessFile createRecordFile(int amountOfRecordsToGenerate) {
         try {
             return new RandomAccessFile(
-                    String.format("../output/records%1$d", amountOfRecordsToGenerate), "rw");
+                    String.format("output/records%1$d", amountOfRecordsToGenerate), "rw");
         } catch (Exception e) {
             throw new Error(e.getMessage());
         }
