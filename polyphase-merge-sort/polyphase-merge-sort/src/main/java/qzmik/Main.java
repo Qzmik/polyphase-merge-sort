@@ -9,5 +9,6 @@ public class Main {
         Sorter sorter = new Sorter(tapeManager);
         sorter.getAndDistributeRecordsFromInputTape();
         tapeManager.saveSortingTapeStateToDisplayTape(0);
+        sorter.mergeRunsFromTapes();
     }
 }

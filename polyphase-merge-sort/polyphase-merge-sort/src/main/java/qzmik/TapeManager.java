@@ -92,4 +92,11 @@ public class TapeManager {
         displayTape.clearTape();
     }
 
+    public void resetAllTapes() throws IOException {
+        for (Tape tape : sortingTapes) {
+            tape.resetTape();
+        }
+        displayTape.resetTape();
+    }
+
 }

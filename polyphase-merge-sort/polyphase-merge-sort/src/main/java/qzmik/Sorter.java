@@ -27,68 +27,77 @@ public class Sorter {
 
     public void mergeRunsFromTapes() throws IOException, EOFException {
 
-        fibonacciBuffer[1] -= 1;
-
         skipDummyRuns();
+        System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
+        System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
 
-        while (Arrays.stream(runCounter).sum() > 1) {
+        /*
+         * while (Arrays.stream(runCounter).sum() > 1) {
+         * try {
+         * getTapesRecordBlocksIntoBuffers();
+         * } catch (EOFException e) {
+         * flushBlockBuffersToTapes();
+         * }
+         * }
+         */
+    }
+
+    private void performPhase() throws IOException {
+
+        while (runCounter[targetTapes[0]] != 0 || runCounter[targetTapes[1]] != 0) {
+
             try {
-                getTapesRecordBlocksIntoBuffers();
+                getTapesRecordBlocksIntoBuffer(targetTapes[0]);
+                getTapesRecordBlocksIntoBuffer(targetTapes[1]);
             } catch (EOFException e) {
-                flushBlockBuffersToTapes();
+                // TODO: dumping the rest of the target into output
             }
+
         }
     }
 
-    private void getTapesRecordBlocksIntoBuffers() throws IOException, EOFException {
-        for (int i = 0; i < targetTapes.length; i++) {
-            if (!tapesRecordBlockInDoubleBuffer[i].hasRemaining()) {
-                tapesRecordBlockInDoubleBuffer[i] = DoubleBuffer
-                        .wrap(tapeManager.readRecordBlockFromTapeInDoubleFormat(targetTapes[i]));
-            }
+    private void getTapesRecordBlocksIntoBuffer(int targetTapeIndex) throws IOException, EOFException {
+        if (!tapesRecordBlockInDoubleBuffer[targetTapeIndex].hasRemaining()) {
+            tapesRecordBlockInDoubleBuffer[targetTapeIndex] = DoubleBuffer
+                    .wrap(tapeManager.readRecordBlockFromTapeInDoubleFormat(targetTapes[targetTapeIndex]));
         }
     }
 
-    private void mergeSortRecordsFromTapes() {
+    private void skipDummyRuns() throws IOException {
+        tapeManager.resetAllTapes();
 
-    }
+        while (dummyRuns[0] + dummyRuns[1] != 0) {
 
-    private void skipDummyRuns() throws IOException, EOFException {
+            // we can ignore EOF (it's not gonna happen) cause we are not gonna run out of
+            // records for dummy runs
+            try {
+                getTapesRecordBlocksIntoBuffer(0);
+                getTapesRecordBlocksIntoBuffer(1);
+            } catch (EOFException e) {
 
-        while (true) {
-
-            if (dummyRuns[0] + dummyRuns[1] == 0) {
-                break;
             }
 
-            getTapesRecordBlocksIntoBuffers();
-
-            if (dummyRuns[0] > 0) {
-                Record currRecord = new Record(tapesRecordBlockInDoubleBuffer[1].get(),
-                        tapesRecordBlockInDoubleBuffer[1].get());
-                putRecordIntoBlockBuffer(currRecord, outputTapeIndex);
-                while (tapesRecordBlockInDoubleBuffer[1].hasRemaining()) {
-                    putRunFromInputBufferIntoTargetBuffer(tapesRecordBlockInDoubleBuffer[1], outputTapeIndex,
-                            currRecord);
-                }
+            while (dummyRuns[0] > 0) {
                 if (!tapesRecordBlockInDoubleBuffer[1].hasRemaining()) {
-                    runCounter[1]--;
-                    dummyRuns[0]--;
+                    break;
                 }
+                runCounter[targetTapes[1]]--;
+                runCounter[outputTapeIndex]++;
+                dummyRuns[0]--;
+                distributeRunFromDoubleBufferToByteBufferForDummyRuns(1,
+                        outputTapeIndex);
             }
 
             while (dummyRuns[1] > 0) {
-                Record currRecord = new Record(tapesRecordBlockInDoubleBuffer[0].get(),
-                        tapesRecordBlockInDoubleBuffer[0].get());
-                putRecordIntoBlockBuffer(currRecord, outputTapeIndex);
-                while (tapesRecordBlockInDoubleBuffer[0].hasRemaining()) {
-                    putRunFromInputBufferIntoTargetBuffer(tapesRecordBlockInDoubleBuffer[0], outputTapeIndex,
-                            currRecord);
-                }
+
                 if (!tapesRecordBlockInDoubleBuffer[0].hasRemaining()) {
-                    runCounter[0]--;
-                    dummyRuns[1]--;
+                    break;
                 }
+                runCounter[targetTapes[0]]--;
+                runCounter[outputTapeIndex]++;
+                dummyRuns[1]--;
+                distributeRunFromDoubleBufferToByteBufferForDummyRuns(0,
+                        outputTapeIndex);
             }
         }
     }
@@ -103,20 +112,24 @@ public class Sorter {
                     inputTapeRecordBlockInDoubleBuffer = DoubleBuffer
                             .wrap(tapeManager.readRecordBlockFromInputTapeInDoubleFormat());
                 } catch (EOFException e) {
-                    dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
+                    if (fibonacciBuffer[1] - runCounter[targetBuffer] != fibonacciBuffer[0])
+                        dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
                     System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
+                    System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
                     flushBlockBuffersToTapes();
                     return;
                 }
             }
-            increaseFibonacciNumber();
+
             while (inputTapeRecordBlockInDoubleBuffer.position() != inputTapeRecordBlockInDoubleBuffer.limit()) {
                 if (runCounter[targetBuffer] == fibonacciBuffer[1]) {
+                    increaseFibonacciNumber();
                     targetBuffer = targetBuffer == 1 ? 0 : 1;
                     break;
                 }
                 runCounter[targetBuffer]++;
-                distributeRunFromDoubleBufferToByteBuffer(inputTapeRecordBlockInDoubleBuffer, targetBuffer);
+                distributeRunFromDoubleBufferToByteBufferForInitialDistribution(inputTapeRecordBlockInDoubleBuffer,
+                        targetBuffer);
             }
         }
     }
@@ -131,7 +144,8 @@ public class Sorter {
         }
     }
 
-    private void distributeRunFromDoubleBufferToByteBuffer(DoubleBuffer inputBuffer, int targetBufferIndex)
+    private void distributeRunFromDoubleBufferToByteBufferForInitialDistribution(DoubleBuffer inputBuffer,
+            int targetBufferIndex)
             throws IOException, EOFException {
         // first record, checking if run is coalesced
         Record currRecord = new Record(inputBuffer.get(), inputBuffer.get());
@@ -150,10 +164,91 @@ public class Sorter {
         putRunFromInputBufferIntoTargetBuffer(inputBuffer, targetBufferIndex, currRecord);
     }
 
+    private void distributeRunFromDoubleBufferToByteBufferForDummyRuns(int inputBufferIndex,
+            int targetBufferIndex)
+            throws IOException, EOFException {
+
+        Record currRecord = new Record(tapesRecordBlockInDoubleBuffer[inputBufferIndex].get(),
+                tapesRecordBlockInDoubleBuffer[inputBufferIndex].get());
+
+        // checking record is a continuation of previous run
+        if (blockBuffers[targetBufferIndex].position() != 0) {
+            double prevCurrent = blockBuffers[targetBufferIndex]
+                    .getDouble(blockBuffers[targetBufferIndex].position() - 8);
+            double prevVoltage = blockBuffers[targetBufferIndex]
+                    .getDouble(blockBuffers[targetBufferIndex].position() - 16);
+
+            if (prevCurrent * prevVoltage < currRecord.getPower()) {
+                dummyRuns[inputBufferIndex == 0 ? 1 : 0]++;
+                runCounter[targetTapes[inputBufferIndex]]++;
+                runCounter[outputTapeIndex]--;
+            }
+        }
+
+        putRecordIntoBlockBuffer(currRecord, targetBufferIndex);
+        // inputting further records as part of a run
+        putRunFromInputBufferIntoTargetBuffer(tapesRecordBlockInDoubleBuffer[inputBufferIndex], targetBufferIndex,
+                currRecord);
+    }
+
+    private void distributeRunsFromDoubleBuffersToByteBufferForPhases(int targetBufferIndex) throws IOException {
+
+        Record leftRecord = new Record(tapesRecordBlockInDoubleBuffer[0].get(),
+                tapesRecordBlockInDoubleBuffer[0].get());
+        Record rightRecord = new Record(tapesRecordBlockInDoubleBuffer[1].get(),
+                tapesRecordBlockInDoubleBuffer[1].get());
+
+        if (blockBuffers[targetBufferIndex].position() != 0) {
+            double prevCurrent = blockBuffers[targetBufferIndex]
+                    .getDouble(blockBuffers[targetBufferIndex].position() - 8);
+            double prevVoltage = blockBuffers[targetBufferIndex]
+                    .getDouble(blockBuffers[targetBufferIndex].position() - 16);
+
+            if (prevCurrent * prevVoltage < leftRecord.getPower()
+                    || prevCurrent * prevVoltage < rightRecord.getPower()) {
+                runCounter[targetBufferIndex]--;
+            }
+        }
+
+        if (leftRecord.compareTo(rightRecord) == -1) {
+            putRecordIntoBlockBuffer(leftRecord, targetBufferIndex);
+            putRecordIntoBlockBuffer(rightRecord, targetBufferIndex);
+        } else {
+            putRecordIntoBlockBuffer(rightRecord, targetBufferIndex);
+            putRecordIntoBlockBuffer(leftRecord, targetBufferIndex);
+        }
+
+        while (tapesRecordBlockInDoubleBuffer[0].hasRemaining() && tapesRecordBlockInDoubleBuffer[1].hasRemaining()) {
+            Record nextLeftRecord = new Record(tapesRecordBlockInDoubleBuffer[0].get(),
+                    tapesRecordBlockInDoubleBuffer[0].get());
+            Record nextRightRecord = new Record(tapesRecordBlockInDoubleBuffer[1].get(),
+                    tapesRecordBlockInDoubleBuffer[1].get());
+
+            if (nextLeftRecord.compareTo(leftRecord) == -1) {
+                tapesRecordBlockInDoubleBuffer[0].position(tapesRecordBlockInDoubleBuffer[0].position() - 2);
+                // TODO: dump the other block
+            }
+            if (nextRightRecord.compareTo(rightRecord) == -1) {
+                tapesRecordBlockInDoubleBuffer[0].position(tapesRecordBlockInDoubleBuffer[0].position() - 2);
+                // TODO: dump the other block
+            }
+            if (nextLeftRecord.compareTo(nextRightRecord) == -1) {
+                putRecordIntoBlockBuffer(nextLeftRecord, targetBufferIndex);
+                putRecordIntoBlockBuffer(nextRightRecord, targetBufferIndex);
+            } else {
+                putRecordIntoBlockBuffer(nextRightRecord, targetBufferIndex);
+                putRecordIntoBlockBuffer(nextLeftRecord, targetBufferIndex);
+            }
+            leftRecord = nextLeftRecord;
+            rightRecord = nextRightRecord;
+        }
+    }
+
     private void putRunFromInputBufferIntoTargetBuffer(DoubleBuffer inputBuffer, int targetBufferIndex,
             Record currRecord) throws IOException, EOFException {
         while (inputBuffer.position() + 2 < inputBuffer.limit()
                 && runCounter[targetBufferIndex] < fibonacciBuffer[1]) {
+
             Record nextRecord = new Record(inputBuffer.get(), inputBuffer.get());
             if (nextRecord.compareTo(currRecord) == -1) {
                 inputBuffer.position(inputBuffer.position() - 2);
@@ -181,7 +276,7 @@ public class Sorter {
         for (int i = 0; i < 3; i++) {
             int length = 0;
             blockBuffers[i].position(0);
-            while (blockBuffers[i].getDouble() != 0.0f) {
+            while (blockBuffers[i].hasRemaining() && blockBuffers[i].getDouble() != 0.0f) {
                 length += 8;
             }
             tapeManager.writeRecordBlockToTapeInBytes(Arrays.copyOfRange(blockBuffers[i].array(), 0, length), i);
