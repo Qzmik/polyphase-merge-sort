@@ -55,6 +55,20 @@ public class TapeManager {
         return new Record(blockBuffers[targetBufferIndex].getDouble(), blockBuffers[targetBufferIndex].getDouble());
     }
 
+    public Record lookupRecord(int targetBufferIndex) throws IOException, EOFException {
+        if (!blockBuffers[targetBufferIndex].hasRemaining()) {
+            readTapeBlockIntoBuffer(targetBufferIndex);
+        }
+        Record record = new Record(blockBuffers[targetBufferIndex].getDouble(),
+                blockBuffers[targetBufferIndex].getDouble());
+        blockBuffers[targetBufferIndex].position(blockBuffers[targetBufferIndex].position() - 16);
+        return record;
+    }
+
+    public void undoRecordRead(int targetBufferIndex) {
+        blockBuffers[targetBufferIndex].position(blockBuffers[targetBufferIndex].position() - 16);
+    }
+
     public void writeRecord(int targetBufferIndex, Record record) throws IOException {
         if (!blockBuffers[targetBufferIndex].hasRemaining()) {
             writeBufferToTape(targetBufferIndex);
@@ -98,7 +112,7 @@ public class TapeManager {
         return tapeStateInDoubleFormat;
     }
 
-    public void flushBlockBuffersToTapes() throws IOException, EOFException {
+    public void flushBlockBuffersToTapes() throws IOException {
 
         for (int i = 0; i < 2; i++) {
             int length = 0;
@@ -108,6 +122,23 @@ public class TapeManager {
             }
             sortingTapes[i].writeBlockOfRecords(Arrays.copyOfRange(blockBuffers[i].array(), 0, length));
             blockBuffers[i].clear();
+        }
+    }
+
+    public void flushBlockBufferToTape(int targetTapeIndex) throws IOException {
+        int length = 0;
+        blockBuffers[targetTapeIndex].position(0);
+        while (blockBuffers[targetTapeIndex].getDouble() != 0.0f) {
+            length += 8;
+        }
+        sortingTapes[targetTapeIndex]
+                .writeBlockOfRecords(Arrays.copyOfRange(blockBuffers[targetTapeIndex].array(), 0, length));
+        blockBuffers[targetTapeIndex].clear();
+    }
+
+    public void archiveTapes(int phase) throws IOException, EOFException {
+        for (int i = 0; i < 3; i++) {
+            saveSortingTapeStateToArchive(i, String.format("archive/phase%1$d_tape%2$d", phase, i));
         }
     }
 
@@ -124,8 +155,9 @@ public class TapeManager {
     }
 
     public void resetAllTapes() throws IOException {
-        for (Tape tape : sortingTapes) {
-            tape.resetTape();
+        for (int i = 0; i < 3; i++) {
+            sortingTapes[i].resetTape();
+            blockBuffers[i] = ByteBuffer.allocate(0);
         }
     }
 

@@ -6,6 +6,8 @@ import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.util.Arrays;
 
+import javax.imageio.plugins.tiff.ExifInteroperabilityTagSet;
+
 public class Sorter {
     private TapeManager tapeManager;
     private int[] fibonacciBuffer = { 0, 1 };
@@ -19,23 +21,6 @@ public class Sorter {
     public Sorter(TapeManager tapeManagerToSet) {
         tapeManager = tapeManagerToSet;
     }
-
-    /*
-     * public void mergeRunsFromTapes() throws IOException, EOFException {
-     * 
-     * skipDummyRuns();
-     * System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
-     * System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
-     * 
-     * /*
-     * while (Arrays.stream(runCounter).sum() > 1) {
-     * try {
-     * getTapesRecordBlocksIntoBuffers();
-     * } catch (EOFException e) {
-     * flushBlockBuffersToTapes();
-     * }
-     * }
-     */
 
     /*
      * private void performPhase() throws IOException {
@@ -93,24 +78,128 @@ public class Sorter {
      * }
      */
 
+    public void skipDummyRuns() throws IOException, EOFException {
+        tapeManager.resetAllTapes();
+        Record currRecord = new Record(0, 0);
+        Record prevRecord = new Record(0, 0);
+        while (dummyRuns[0] + dummyRuns[1] > 0) {
+
+            if (dummyRuns[0] > 0) {
+                currRecord = tapeManager.lookupRecord(targetTapes[1]);
+                if (currRecord.compareTo(prevRecord) == -1) {
+                    runCounter[targetTapes[1]]--;
+                    runCounter[outputTapeIndex]++;
+                    dummyRuns[0]--;
+                }
+                if (dummyRuns[0] != 0) {
+                    tapeManager.readRecord(targetTapes[1]);
+                    tapeManager.writeRecord(outputTapeIndex, currRecord);
+                    prevRecord = currRecord;
+                }
+            }
+
+            if (dummyRuns[1] > 0) {
+                currRecord = tapeManager.lookupRecord(targetTapes[0]);
+                if (currRecord.compareTo(prevRecord) == -1) {
+                    runCounter[targetTapes[0]]--;
+                    runCounter[outputTapeIndex]++;
+                    dummyRuns[1]--;
+                }
+                if (dummyRuns[1] != 0) {
+                    tapeManager.readRecord(targetTapes[0]);
+                    tapeManager.writeRecord(outputTapeIndex, currRecord);
+                    prevRecord = currRecord;
+                }
+            }
+        }
+
+        System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
+    }
+
+    public void mergingTapes() throws IOException {
+        Record prevRecordLeft = new Record(0, 0);
+        Record prevRecordRight = new Record(0, 0);
+        Record currRecordLeft = tapeManager.readRecord(targetTapes[0]);
+        Record currRecordRight = tapeManager.readRecord(targetTapes[1]);
+        while (runCounter[targetTapes[0]] != 0 && runCounter[targetTapes[1]] != 0) {
+
+            // if run ends, dump rest of the other run
+            while (prevRecordLeft.compareTo(currRecordLeft) <= 0 && prevRecordRight.compareTo(currRecordRight) <= 0) {
+                if (currRecordLeft.compareTo(currRecordRight) <= 0) {
+                    tapeManager.writeRecord(outputTapeIndex, currRecordLeft);
+                    prevRecordLeft = currRecordLeft;
+
+                    try {
+                        currRecordLeft = tapeManager.readRecord(targetTapes[0]);
+                    } catch (EOFException eLeft) {
+
+                    }
+
+                } else {
+                    tapeManager.writeRecord(outputTapeIndex, currRecordRight);
+                    prevRecordRight = currRecordRight;
+
+                    try {
+                        currRecordRight = tapeManager.readRecord(targetTapes[1]);
+                    } catch (EOFException eRight) {
+
+                    }
+                }
+            }
+
+            if (prevRecordLeft.compareTo(currRecordLeft) > 0) {
+                while (prevRecordRight.compareTo(currRecordRight) <= 0) {
+                    tapeManager.writeRecord(outputTapeIndex, currRecordRight);
+                    prevRecordRight = currRecordRight;
+                    try {
+                        currRecordRight = tapeManager.readRecord(targetTapes[1]);
+                    } catch (EOFException eRight) {
+
+                    }
+                }
+
+            }
+
+            if (prevRecordRight.compareTo(currRecordRight) > 0) {
+                while (prevRecordLeft.compareTo(currRecordLeft) <= 0) {
+                    tapeManager.writeRecord(outputTapeIndex, currRecordLeft);
+                    prevRecordLeft = currRecordLeft;
+                    try {
+                        currRecordLeft = tapeManager.readRecord(targetTapes[0]);
+                    } catch (EOFException eLeft) {
+
+                    }
+                }
+
+            }
+            System.out.println("runs merged");
+            runCounter[targetTapes[0]]--;
+            runCounter[targetTapes[1]]--;
+            runCounter[outputTapeIndex]++;
+        }
+        tapeManager.flushBlockBufferToTape(outputTapeIndex);
+        System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
+    }
+
     public void getAndDistributeRecordsFromInputTape() throws IOException, EOFException {
         int targetBuffer = 0;
         suppressingFib = 0;
 
-        // if program throws exception here, there are no record on input tape
-        Record prevRecord = tapeManager.readRecord(tapeManager.inputTapeID);
-        tapeManager.writeRecord(targetBuffer, prevRecord);
-        runCounter[targetBuffer]++;
-        Record currRecord = prevRecord;
+        Record prevRecordLeft = new Record(Record.MAX_RANGE + 1, Record.MAX_RANGE + 1);
+        Record prevRecordRight = new Record(Record.MAX_RANGE + 1, Record.MAX_RANGE + 1);
+        Record currRecord;
 
         while (true) {
-            System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], fibonacciBuffer[1]);
+
+            if (runCounter[targetBuffer] == fibonacciBuffer[1]) {
+                increaseFibonacciNumber();
+                targetBuffer = targetBuffer == 1 ? 0 : 1;
+            }
 
             try {
                 currRecord = tapeManager.readRecord(tapeManager.inputTapeID);
-                System.out.printf("%f %f %f\n", currRecord.getVoltage(), currRecord.getCurrent(),
-                        currRecord.getPower());
             } catch (EOFException e) {
+
                 if (fibonacciBuffer[1] - runCounter[targetBuffer] != fibonacciBuffer[0])
                     dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
                 tapeManager.flushBlockBuffersToTapes();
@@ -119,18 +208,60 @@ public class Sorter {
                 return;
             }
 
-            if (currRecord.compareTo(prevRecord) == -1) {
-                if (runCounter[targetBuffer] == fibonacciBuffer[1]) {
-
-                    increaseFibonacciNumber();
-                    targetBuffer = targetBuffer == 1 ? 0 : 1;
-                    System.out.printf("Swapping to targetBuffer :%d\n", targetBuffer);
+            if (targetBuffer == 0) {
+                if (currRecord.compareTo(prevRecordLeft) == -1) {
+                    runCounter[targetBuffer]++;
                 }
-                runCounter[targetBuffer]++;
+                tapeManager.writeRecord(targetBuffer, currRecord);
+                prevRecordLeft = currRecord;
+                while (true) {
+                    try {
+                        currRecord = tapeManager.readRecord(tapeManager.inputTapeID);
+                    } catch (EOFException e) {
+
+                        if (fibonacciBuffer[1] - runCounter[targetBuffer] != fibonacciBuffer[0])
+                            dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
+                        tapeManager.flushBlockBuffersToTapes();
+                        System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
+                        System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
+                        return;
+                    }
+                    if (currRecord.compareTo(prevRecordLeft) == -1) {
+                        tapeManager.undoRecordRead(tapeManager.inputTapeID);
+                        break;
+                    }
+                    tapeManager.writeRecord(targetBuffer, currRecord);
+                    prevRecordLeft = currRecord;
+                }
             }
 
-            tapeManager.writeRecord(targetBuffer, currRecord);
-            prevRecord = currRecord;
+            if (targetBuffer == 1) {
+                if (currRecord.compareTo(prevRecordRight) == -1) {
+                    runCounter[targetBuffer]++;
+                }
+                tapeManager.writeRecord(targetBuffer, currRecord);
+                prevRecordRight = currRecord;
+                while (true) {
+                    try {
+                        currRecord = tapeManager.readRecord(tapeManager.inputTapeID);
+                    } catch (EOFException e) {
+
+                        if (fibonacciBuffer[1] - runCounter[targetBuffer] != fibonacciBuffer[0])
+                            dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
+                        tapeManager.flushBlockBuffersToTapes();
+                        System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
+                        System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
+                        return;
+                    }
+                    if (currRecord.compareTo(prevRecordRight) == -1) {
+                        tapeManager.undoRecordRead(tapeManager.inputTapeID);
+                        break;
+                    }
+                    tapeManager.writeRecord(targetBuffer, currRecord);
+                    prevRecordRight = currRecord;
+                }
+            }
+
         }
     }
 
