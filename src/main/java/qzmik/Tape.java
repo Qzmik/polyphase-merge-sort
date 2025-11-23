@@ -14,7 +14,7 @@ public class Tape {
     private RandomAccessFile fileHook;
 
     public Tape(int tapeID) throws IOException {
-        fileHook = new RandomAccessFile(String.format("output/tape%1$d", tapeID), "rw");
+        fileHook = new RandomAccessFile(String.format("tapes/tape%1$d", tapeID), "rw");
     }
 
     // initial record file can be used as a tape after initial distribution

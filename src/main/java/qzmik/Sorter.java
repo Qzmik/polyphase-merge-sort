@@ -3,6 +3,7 @@ package qzmik;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.DoubleBuffer;
+import java.util.Scanner;
 
 public class Sorter {
     private TapeManager tapeManager;
@@ -12,26 +13,54 @@ public class Sorter {
     private int[] targetTapes = { 0, 1 };
     private int outputTapeIndex = 2;
     private int suppressingFib = 1;
+    private int finalOutputTape = 0;
+    private int mode;
+    int phaseCounter = 1;
     DoubleBuffer tapesRecordBlockInDoubleBuffer[] = { DoubleBuffer.allocate(0), DoubleBuffer.allocate(0) };
 
-    public Sorter(TapeManager tapeManagerToSet) {
+    public Sorter(TapeManager tapeManagerToSet, int modeToSet) {
         tapeManager = tapeManagerToSet;
+        mode = modeToSet;
     }
 
-    public void beginMerging() throws IOException {
-        int phaseCounter = 1;
+    public int[] mergeSort() throws IOException {
+        getAndDistributeRecordsFromInputTape();
+        int runs = runCounter[0] + runCounter[1];
+        tapeManager.archiveTapesPostInitialDistribution(0);
+        skipDummyRuns();
+        beginFurtherPhases();
+        tapeManager.closeAllTapes();
+        phaseCounter--;
+        int blockOpsData[] = tapeManager.getBlockOpsData();
+        if (mode == 1) {
+            System.out.printf("Block reads: %d\nBlock writes: %d\nNumber of phases: %d\n\n", blockOpsData[0],
+                    blockOpsData[1],
+                    phaseCounter);
+            System.out.printf("Tape containing the output: tape %d\n", finalOutputTape);
+        }
+        int plotData[] = { blockOpsData[0], blockOpsData[1], phaseCounter, runs };
+        return plotData;
+    }
+
+    public void beginFurtherPhases() throws IOException {
+
+        Scanner scanner = new Scanner(System.in);
+        // each run of a loop corresponds to a post-initial distribution phase
         while (runCounter[0] + runCounter[1] + runCounter[2] > 1) {
+            if (mode == 1) {
+                scanner.nextLine();
+            }
             mergingTapes();
             tapeManager.archiveTapes(phaseCounter, outputTapeIndex);
             int newOutputTapeIndex = runCounter[targetTapes[0]] == 0 ? 0 : 1;
             int temp = outputTapeIndex;
+            finalOutputTape = outputTapeIndex;
             outputTapeIndex = targetTapes[newOutputTapeIndex];
             targetTapes[newOutputTapeIndex] = temp;
-
-            System.out.printf("NEW TARGETS %d %d %d\n", targetTapes[0], targetTapes[1], outputTapeIndex);
             phaseCounter++;
             tapeManager.setupForNextPhase(outputTapeIndex, temp);
         }
+        scanner.close();
     }
 
     public void skipDummyRuns() throws IOException, EOFException {
@@ -68,8 +97,8 @@ public class Sorter {
                 }
             }
         }
-
-        System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
+        if (mode == 1)
+            System.out.printf("Run count: %d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
     }
 
     public void mergingTapes() throws IOException {
@@ -85,7 +114,6 @@ public class Sorter {
             while (prevRecordLeft.compareTo(currRecordLeft) <= 0 && prevRecordRight.compareTo(currRecordRight) <= 0) {
                 if (currRecordLeft.compareTo(currRecordRight) <= 0) {
                     tapeManager.writeRecord(outputTapeIndex, currRecordLeft);
-                    System.out.printf("CONSUMING LEFT: %f \n", currRecordLeft.getPower());
                     tapeManager.readRecord(targetTapes[0]);
                     prevRecordLeft = currRecordLeft;
                     try {
@@ -96,7 +124,6 @@ public class Sorter {
                     }
                 } else {
                     tapeManager.writeRecord(outputTapeIndex, currRecordRight);
-                    System.out.printf("CONSUMING RIGHT: %f \n", currRecordRight.getPower());
                     tapeManager.readRecord(targetTapes[1]);
                     prevRecordRight = currRecordRight;
                     try {
@@ -112,7 +139,6 @@ public class Sorter {
             // the tape does
             while (prevRecordLeft.compareTo(currRecordLeft) <= 0) {
                 tapeManager.writeRecord(outputTapeIndex, currRecordLeft);
-                System.out.printf("CONSUMING LEFT: %f \n", currRecordLeft.getPower());
                 tapeManager.readRecord(targetTapes[0]);
                 prevRecordLeft = currRecordLeft;
                 try {
@@ -124,7 +150,6 @@ public class Sorter {
 
             while (prevRecordRight.compareTo(currRecordRight) <= 0) {
                 tapeManager.writeRecord(outputTapeIndex, currRecordRight);
-                System.out.printf("CONSUMING RIGHT: %f \n", currRecordRight.getPower());
                 tapeManager.readRecord(targetTapes[1]);
                 prevRecordRight = currRecordRight;
                 try {
@@ -139,12 +164,12 @@ public class Sorter {
             runCounter[outputTapeIndex]++;
             prevRecordLeft = new Record(0, 0);
             prevRecordRight = new Record(0, 0);
-            System.out.println("MERGED");
         }
         // end state here should be that one of the tapes in empty, one is partially
         // read (with part of it possibly still in buffer) and one fully written to
         tapeManager.flushBlockBufferToTape(outputTapeIndex);
-        System.out.printf("%d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
+        if (mode == 1)
+            System.out.printf("Run count: %d %d %d\n", runCounter[0], runCounter[1], runCounter[2]);
     }
 
     public void getAndDistributeRecordsFromInputTape() throws IOException, EOFException {
@@ -171,8 +196,10 @@ public class Sorter {
                 tapeManager.flushBlockBufferToTape(0);
                 tapeManager.flushBlockBufferToTape(1);
                 tapeManager.resetAllTapes();
-                System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
-                System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
+                if (mode == 1) {
+                    System.out.printf("Run count post-initial distribution: %d %d\n", runCounter[0], runCounter[1]);
+                    System.out.printf("Required dummy runs: %d %d\n", dummyRuns[0], dummyRuns[1]);
+                }
                 return;
             }
 
@@ -191,8 +218,11 @@ public class Sorter {
                             dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
                         tapeManager.flushBlockBufferToTape(0);
                         tapeManager.flushBlockBufferToTape(1);
-                        System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
-                        System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
+                        if (mode == 1) {
+                            System.out.printf("Run count post-initial distribution: %d %d\n", runCounter[0],
+                                    runCounter[1]);
+                            System.out.printf("Required dummy runs: %d %d\n", dummyRuns[0], dummyRuns[1]);
+                        }
                         return;
                     }
                     if (currRecord.compareTo(prevRecordLeft) == -1) {
@@ -219,8 +249,11 @@ public class Sorter {
                             dummyRuns[targetBuffer] = fibonacciBuffer[1] - runCounter[targetBuffer];
                         tapeManager.flushBlockBufferToTape(0);
                         tapeManager.flushBlockBufferToTape(1);
-                        System.out.printf("%d %d\n", runCounter[0], runCounter[1]);
-                        System.out.printf("%d %d\n", dummyRuns[0], dummyRuns[1]);
+                        if (mode == 1) {
+                            System.out.printf("Run count post-initial distribution: %d %d\n", runCounter[0],
+                                    runCounter[1]);
+                            System.out.printf("Required dummy runs: %d %d\n", dummyRuns[0], dummyRuns[1]);
+                        }
                         return;
                     }
                     if (currRecord.compareTo(prevRecordRight) == -1) {

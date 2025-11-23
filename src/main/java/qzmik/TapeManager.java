@@ -14,6 +14,9 @@ public class TapeManager {
     public int inputTapeID = 2;
     private ByteBuffer[] blockBuffers;
 
+    private int blockReads = 0;
+    private int blockWrites = 0;
+
     public TapeManager(String inputTapeFileName, int recordAmount) throws FileNotFoundException, IOException {
 
         sortingTapes = new Tape[3];
@@ -27,7 +30,23 @@ public class TapeManager {
         blockBuffers[1] = ByteBuffer.allocate(0);
         blockBuffers[2] = ByteBuffer.allocate(0);
         clearAllTapes();
-        RecordFileGenerator.generateRecordFile(recordAmount);
+        RecordFileGenerator.generateRandomRecordFile(recordAmount);
+        saveSortingTapeStateToArchive(2, "archive/initialRecords", false);
+    }
+
+    public TapeManager(String inputFileName) throws FileNotFoundException, IOException, IllegalArgumentException {
+        sortingTapes = new Tape[3];
+        sortingTapes[0] = new Tape(0);
+        sortingTapes[1] = new Tape(1);
+        sortingTapes[2] = new Tape(2, "archive/recordsFromFile");
+
+        blockBuffers = new ByteBuffer[3];
+
+        blockBuffers[0] = ByteBuffer.allocate(0);
+        blockBuffers[1] = ByteBuffer.allocate(0);
+        blockBuffers[2] = ByteBuffer.allocate(0);
+        clearAllTapes();
+        RecordFileGenerator.populateRecordFileFromFile(inputFileName);
         saveSortingTapeStateToArchive(2, "archive/initialRecords", false);
     }
 
@@ -39,10 +58,12 @@ public class TapeManager {
             throw new EOFException("Chosen tape has no more data on it");
         }
         blockBuffers[targetTapeIndex] = ByteBuffer.wrap(recordArray, 0, numberOfBytesRead);
+        blockReads++;
     }
 
     private void writeBufferToTape(int targetTapeIndex) throws IOException {
         sortingTapes[targetTapeIndex].writeBlockOfRecords(blockBuffers[targetTapeIndex].array());
+        blockWrites++;
         blockBuffers[targetTapeIndex] = ByteBuffer
                 .allocate(Record.RECORD_SIZE_ON_DISK * TapeManager.NUMBER_OF_RECORDS_IN_A_BLOCK);
     }
@@ -90,7 +111,7 @@ public class TapeManager {
         blockBuffers[newOutputTapeIndex] = ByteBuffer.allocate(0);
     }
 
-    public void saveSortingTapeStateToArchive(int tapeID, String archiveName, boolean isOutput)
+    private void saveSortingTapeStateToArchive(int tapeID, String archiveName, boolean isOutput)
             throws IOException, EOFException {
 
         long prevPosition = sortingTapes[tapeID].getPosition();
@@ -139,19 +160,6 @@ public class TapeManager {
         return tapeStateInDoubleFormat;
     }
 
-    public void flushBlockBuffersToTapes() throws IOException {
-
-        for (int i = 0; i < 3; i++) {
-            int length = 0;
-            blockBuffers[i].position(0);
-            while (blockBuffers[i].hasRemaining() && blockBuffers[i].getDouble() != 0.0f) {
-                length += 8;
-            }
-            sortingTapes[i].writeBlockOfRecords(Arrays.copyOfRange(blockBuffers[i].array(), 0, length));
-            blockBuffers[i].clear();
-        }
-    }
-
     public void flushBlockBufferToTape(int targetTapeIndex) throws IOException {
         int length = 0;
         blockBuffers[targetTapeIndex].position(0);
@@ -161,6 +169,8 @@ public class TapeManager {
         sortingTapes[targetTapeIndex]
                 .writeBlockOfRecords(Arrays.copyOfRange(blockBuffers[targetTapeIndex].array(), 0, length));
         blockBuffers[targetTapeIndex].clear();
+
+        blockWrites++;
     }
 
     public void archiveTapes(int phase, int outputTapeIndex) throws IOException, EOFException {
@@ -180,6 +190,11 @@ public class TapeManager {
         }
         saveSortingTapeStateToArchive(2, String.format("archive/phase%1$d_tape%2$d", phase, 2),
                 false);
+    }
+
+    public int[] getBlockOpsData() {
+        int arr[] = { blockReads, blockWrites };
+        return arr;
     }
 
     public void closeAllTapes() throws IOException {

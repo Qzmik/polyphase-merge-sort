@@ -10,7 +10,8 @@ buildNumber.properties
 # https://maven.apache.org/wrapper/#usage-without-binary-jar
 .mvn/wrapper/maven-wrapper.jar
 output/
-
+tapes/
+experiment/
 # Eclipse m2e generated files
 # Eclipse Core
 .project
